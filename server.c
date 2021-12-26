@@ -29,7 +29,6 @@ typedef struct conect{
 };
 
 struct conect connected_users[100];
-
 int count_connected;
 
 sqlite3 *db;
@@ -291,7 +290,7 @@ void log_in(int cl, int idThread, char rasp[], int* connected, char connected_us
 
         if(write(cl, &verif, sizeof(verif)) <= 0)
         {
-            perror("[server] Eroare citire username de la client.\n");
+            perror("[server] Eroare scriere spre client.\n");
             return;
         }
 
@@ -365,6 +364,10 @@ void trimite_mesaj(int cl, int idThread, char rasp[], char connected_username[])
     sqlite3_prepare_v2(db, "CREATE TABLE SMESSAGE(SENDER TEXT NOT NULL, RECEIVER TEXT NOT NULL, MSG TEXT NOT NULL)", -1, &stmt, NULL);
     sqlite3_step(stmt);
 
+    sqlite3_stmt *stmt8;
+    sqlite3_prepare_v2(db, "CREATE TABLE RMESSAGE(SENDER TEXT NOT NULL, RECEIVER TEXT NOT NULL, MSG TEXT NOT NULL)", -1, &stmt8, NULL);
+    sqlite3_step(stmt8);
+
     sqlite3_stmt *stmt3;
     sqlite3_prepare_v2(db, "CREATE TABLE CONVERSATII(USER1 TEXT, USER2 TEXT, CONV TEXT, primary key(USER1, USER2))", -1, &stmt3, NULL);
     sqlite3_step(stmt3);
@@ -420,6 +423,17 @@ void trimite_mesaj(int cl, int idThread, char rasp[], char connected_username[])
             sqlite3_bind_text(stmt2, 2, receiver_username, -1, SQLITE_STATIC);
             sqlite3_bind_text(stmt2, 3, mesaj, -1, SQLITE_STATIC);
             sqlite3_step(stmt2);
+        }
+        else
+        {
+            //daca userul caruia vrem sa trimitem mesajul e conectat?
+            //ar trebui pus in alt tabel -> RMESSAGE
+            sqlite3_stmt *stmt9;
+            sqlite3_prepare_v2(db, "INSERT INTO RMESSAGE VALUES(?1, ?2, ?3);", -1, &stmt9, NULL);
+            sqlite3_bind_text(stmt9, 1, connected_username, -1, SQLITE_STATIC);
+            sqlite3_bind_text(stmt9, 2, receiver_username, -1, SQLITE_STATIC);
+            sqlite3_bind_text(stmt9, 3, mesaj, -1, SQLITE_STATIC);
+            sqlite3_step(stmt9);
         }
 
         strcpy(rasp, "Mesaj transmis cu succes!");
@@ -556,7 +570,8 @@ void raspunde(int cl, int idThread)
             "2. Log out \n" \
             "3. Creare cont \n" \
             "4. Trimite mesaj catre\n" \
-            "5. Vizualizare conversatie \n";
+            "5. Raspunde la mesaj...\n" \
+            "6. Vizualizare conversatie \n";
 
     //scriere comenzilor spre client
     if(write(cl, lista_comenzi, 1024) <= 0)
@@ -568,7 +583,7 @@ void raspunde(int cl, int idThread)
         printf("[Thread %d]Mesajul a fost trasmis cu succes.\n", idThread);
 
     char comanda[100];
-    char connected_username[20];
+    char connected_username[20] = "";
     int connected = 0;
     bzero(comanda, 100);
 
@@ -583,7 +598,7 @@ void raspunde(int cl, int idThread)
         if(strcmp(comanda, "Log in") == 0)
         {
             log_in(cl, idThread, rasp, &connected, connected_username);
-
+            //printf("%d\n", connected);
             // for(int i = 0; i < count_connected; i++)
             //     printf("User %d: %s\n", i, connected_users[i].username);
         }
@@ -592,10 +607,12 @@ void raspunde(int cl, int idThread)
             creare_cont(cl, idThread, rasp);
         }
         else if(strcmp(comanda, "Trimite mesaj catre") == 0)
-        {
-            if(write(cl, &connected, 1) <= 0)
+        {   
+            printf("DAAAA!!! %d\n", connected);
+            if(write(cl, &connected, sizeof(connected)) <= 0)
             {
                 perror("[server]Eroare scriere spre client.\n");
+                exit(1);
             }
             if(connected == 0)
             {
@@ -608,7 +625,7 @@ void raspunde(int cl, int idThread)
         }
         else if(strcmp(comanda, "Vizualizare conversatie") == 0)
         {
-            if(write(cl, &connected, 1) <= 0)
+            if(write(cl, &connected, sizeof(connected)) <= 0)
             {
                 perror("[server]Eroare scriere spre client.\n");
             }
@@ -647,37 +664,122 @@ void raspunde(int cl, int idThread)
         }
         else if(strcmp(comanda, "Log out") == 0)
         {
-            printf("S-A DECONECTAT %s\n", connected_username);
-            int poz = -1;
-            for(int i = 0; i < count_connected; i++)
+            if(connected == 1)
             {
-                //printf("User %d: %s\n", i, connected_users[i].username);
-                if(strcmp(connected_users[i].username, connected_username) == 0)
+                printf("S-A DECONECTAT %s\n", connected_username);
+                int poz = -1;
+                for(int i = 0; i < count_connected; i++)
                 {
-                    poz = i;
-                    break;
+                    //printf("User %d: %s\n", i, connected_users[i].username);
+                    if(strcmp(connected_users[i].username, connected_username) == 0)
+                    {
+                        poz = i;
+                        break;
+                    }
                 }
+                if(poz != -1)
+                {
+                    for(int i = poz; i < count_connected - 1; i++)
+                    {
+                        strcpy(connected_users[i].username, connected_users[i + 1].username);
+                        connected_users[i].descriptor = connected_users[i + 1].descriptor;
+                    }
+                    count_connected--;
+                }
+                strcpy(connected_username, " ");
+                strcpy(rasp, "Te-ai deconectat!");
+                connected = 0;
             }
-            if(poz != -1)
+            else
             {
-                for(int i = poz; i < count_connected - 1; i++)
-                {
-                    strcpy(connected_users[i].username, connected_users[i + 1].username);
-                    connected_users[i].descriptor = connected_users[i + 1].descriptor;
-                }
-                count_connected--;
+                strcpy(rasp, "Nu e nimeni conectat!");
             }
-            strcpy(connected_username, " ");
-            strcpy(rasp, "Te-ai deconectat!");
-            connected = 0;
+            //toate mesajele din rmessage ar trb trecute in smessage??
+        }
+        else if(strcmp(comanda, "Raspunde la mesaj") == 0)
+        {
+            strcpy(rasp, "Ai raspuns la un mesaj anume.");
         }
         else
-            strcpy(rasp, "Nu exista aceasta comanda!");
+        {
+            strcpy(rasp, "Nu exista aceasta comanda! Alege una de mai sus!");
+            int size = strlen(lista_comenzi);
+            if(write(cl, &size, sizeof(size)) <= 0)
+            {
+                perror("[server]Eroare scriere catre client!\n");
+                exit(1);
+            }
+            if(write(cl, lista_comenzi, size) <= 0)
+            {
+                perror("[server]Eroare scriere catre client!\n");
+                exit(1);
+            }
+        }
 
         if(write(cl, rasp, 100) <= 0)
         {
             printf("[Thread %d] ", idThread);
             perror("[Thread]Eroare la write() catre client.\n");
+        }
+        
+        //verificam daca nu cumva are mesaje noi
+        if(strcmp(comanda, "exit") != 0)
+        {
+            printf("%d %s\n", connected, connected_username);
+            int conn = 2;
+            if(write(cl, &connected, sizeof(connected)) <= 0)
+            {
+                perror("[server]Eroare scriere catre client!\n");
+                exit(1);
+            }
+            if(connected == 1)
+            {
+                sqlite3_stmt *rec1;
+                sqlite3_prepare_v2(db, "SELECT * FROM rmessage WHERE receiver = ?1", -1, &rec1, NULL);
+                sqlite3_bind_text(rec1, 1, connected_username, -1, SQLITE_STATIC);
+
+                int rd;
+                char *oldmsg = "";
+                while( (rd = sqlite3_step(rec1)) == SQLITE_ROW)
+                {
+                    const char *msg = sqlite3_column_text(rec1, 2);
+                    const char *from = sqlite3_column_text(rec1, 0);
+                    char* newmsg = (char*)malloc(strlen(oldmsg) + strlen(msg) + strlen(from) + 3);
+                    strcpy(newmsg, oldmsg);
+                    strcat(newmsg, "\n");
+                    strcat(newmsg, from);
+                    strcat(newmsg, ": ");
+                    strcat(newmsg, msg);
+                    oldmsg = (char*)malloc(strlen(newmsg));
+                    strcpy(oldmsg, newmsg);
+                }
+                sqlite3_finalize(rec1);
+                printf("OFFLINE %s\n", oldmsg);
+
+                int dim_oldmsg = strlen(oldmsg);
+                if(dim_oldmsg == 0)
+                {
+                    oldmsg = (char*)malloc(strlen("Nu aveti mesaje noi!"));
+                    strcpy(oldmsg, "Nu aveti mesaje noi!");
+                    dim_oldmsg = strlen(oldmsg);
+                }
+
+                if(write(cl, &dim_oldmsg, sizeof(dim_oldmsg)) <= 0)
+                {
+                    perror("[server]Eroare scriere spre client.");
+                    exit(2);
+                }
+                if(write(cl, oldmsg, dim_oldmsg) <= 0)
+                {
+                    perror("[server]Eroare scriere spre client.");
+                    exit(2);
+                }
+
+                sqlite3_stmt *rec2;
+                sqlite3_prepare_v2(db, "DELETE FROM rmessage WHERE receiver = ?1", -1, &rec2, NULL);
+                sqlite3_bind_text(rec2, 1, connected_username, -1, SQLITE_STATIC);
+                sqlite3_step(rec2);
+            }
         }
         bzero(comanda, 100);
     }
