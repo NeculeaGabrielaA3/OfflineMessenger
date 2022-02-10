@@ -27,7 +27,8 @@ void creare_cont(int sd)
         perror("[client]Eroare la scriere spre server.\n");
         return;
     }
-    printf("Creaza o parola: \n");
+    
+    printf("<>Creaza o parola: \n");
     bzero(password, 30);
     read(0, password, 30);
 
@@ -41,7 +42,7 @@ void creare_cont(int sd)
 void log_in(int sd)
 {
     char username[20], password[30];
-    printf("Introduce-ti username-ul: \n");
+    printf("<>Introduceti username-ul: \n");
     bzero(username, 20);
     read(0, username, 20);
 
@@ -50,7 +51,7 @@ void log_in(int sd)
         perror("[client]Eroare la scriere spre server.\n");
         return;
     }
-    printf("Introduce-ti parola: \n");
+    printf("<>Introduceti parola: \n");
     bzero(password, 30);
     read(0, password, 30);
 
@@ -92,7 +93,7 @@ void log_in(int sd)
                 perror("[client]Eroare citire de la server.");
                 exit(1);
             }
-            printf("MESAJE NOI!! :%s\n", oldmsg);
+            printf("<>MESAJE NOI PRIMITE OFFLINE!!: %s\n", oldmsg);
         }
     }
 
@@ -100,11 +101,10 @@ void log_in(int sd)
 
 void trimite_mesaj(int sd)
 {
-    //printf("INTRA AICI!!\n");
     char receiver_username[20];
     int ok = 0;
     bzero(receiver_username, 20);
-    printf("Cui vreti sa trimiteti mesajul? Introduceti utilizatorul: \n");
+    printf("<>Cui vreiti sa trimiti mesajul? Introduceti utilizatorul: \n");
     read(0, receiver_username, 20);
 
     if(write(sd, receiver_username, 20) <= 0)
@@ -124,7 +124,7 @@ void trimite_mesaj(int sd)
         char mesaj[2024];
         bzero(mesaj, 2024);
 
-        printf("Introduce-ti mesajul pt utilziator: \n");
+        printf("<>Introduceti mesajul pt utilizator: \n");
         read(0, mesaj, 2024);
 
         int size = strlen(mesaj);
@@ -147,10 +147,52 @@ void vizualizare_conversatie(int sd)
 {
     char user_conv[20];
     bzero(user_conv, 20);
-    printf("Conversaria cu cine vrei sa vezi? Introdu utilizatorul: \n");
+    printf("<>Ce conversatie doriti sa vedeti? Introduceti utilizatorul: \n");
     read(0, user_conv, 20);
 
     //scriem utilizatorul serverului
+    if(write(sd, user_conv, 20) <= 0)
+    {
+        perror("[client]Eroare la scriere spre server.\n");
+        exit(2);
+    }
+
+    int ok;
+    if(read(sd, &ok, sizeof(ok)) <= 0)
+    {
+        perror("[client]Eroare citire de la server.\n");
+        exit(2);
+    }
+
+    user_conv[strlen(user_conv) - 1] = '\0';
+    if(ok == 1)
+    {
+        int size_conversatie;
+        if(read(sd, &size_conversatie, sizeof(size_conversatie)) <= 0)
+        {
+            perror("[client]Eroare citire de la server1.\n");
+            exit(2);
+        }
+
+        char* conversatie = (char*)malloc(size_conversatie + 1);
+        if(read(sd, conversatie, size_conversatie) <= 0)
+        {
+            perror("[client]Eroare citire de la server2.\n");
+            exit(2);
+        }
+
+        printf("\n<>Conversatia cu %s: \n%s\n", user_conv, conversatie);
+    }
+}
+
+void raspunde_mesaj(int sd)
+{
+    char user_conv[20];
+    bzero(user_conv, 20);
+
+    printf("\n<>Introdu username valid: \n");
+    read(0, user_conv, 20);
+
     if(write(sd, user_conv, 20) <= 0)
     {
         perror("[client]Eroare la scriere spre server.\n");
@@ -164,23 +206,72 @@ void vizualizare_conversatie(int sd)
         return;
     }
 
-    user_conv[strlen(user_conv) - 1] = '\0';
     if(ok == 1)
     {
-        int size_conversatie;
-        if(read(sd, &size_conversatie, sizeof(size_conversatie)) <= 0)
+        int rs;
+        if(read(sd, &rs, sizeof(rs)) <= 0)
         {
-            perror("[client]Eroare citire de la server1.\n");
+            perror("[client]Eroare citire de la server.\n");
             exit(1);
         }
 
-        char* conversatie = (char*)malloc(size_conversatie + 1);
-        if(read(sd, conversatie, size_conversatie) <= 0)
+        //conversatia exista
+        if(rs == 100)
         {
-            perror("[client]Eroare citire de la server2.\n");
+            int size_conversatie;
+            if(read(sd, &size_conversatie, sizeof(size_conversatie)) <= 0)
+            {
+                perror("[client]Eroare citire de la server.\n");
+                exit(1);
+            }
+
+            char* conversatie = (char*)malloc(size_conversatie + 1);
+            if(read(sd, conversatie, size_conversatie) <= 0)
+            {
+                perror("[client]Eroare citire de la server.\n");
+                exit(1);
+            }
+
+            int nr_maxmsg;
+
+            if(read(sd, &nr_maxmsg, sizeof(nr_maxmsg)) <= 0)
+            {
+                perror("[client]Eroare citire de la server.\n");
+                exit(1);
+            }
+
+            printf("%s\n<>La care mesaj vreti sa raspundeti?\n<>Alegeti numarul de ordine al mesajului: \n", conversatie);
+            int nr_mesaj;
+
+            scanf("%d", &nr_mesaj);
+
+            if(write(sd, &nr_mesaj, sizeof(nr_mesaj)) <= 0)
+            {
+                perror("[client]Eroare la scriere spre server.\n");
+                exit(1);
+            }
+
+            if(nr_mesaj > nr_maxmsg)
+            {
+                printf("<>Nu exista mesaj cu numarul %d.\n", nr_mesaj);
+                return 0;
+            }
+            else
+            {
+                char reply[1024];
+                bzero(reply, 1024);
+                printf("<>Tastati raspunsul pentru mesajul cu numarul %d: \n", nr_mesaj);
+                read(0, reply, 1024);
+                int dim_reply = strlen(reply);
+
+                if(write(sd, reply, 1024) <= 0)
+                {
+                    perror("[client]Eroare citire de la server.\n");
+                    exit(2);
+                }
+            }
         }
 
-        printf("\nConversatia cu %s: \n%s\n", user_conv, conversatie);
     }
 }
 
@@ -203,7 +294,7 @@ int main (int argc, char *argv[])
     if ((sd = socket (AF_INET, SOCK_STREAM, 0)) == -1)
     {
         perror ("Eroare la socket().\n");
-        return;
+        return -1;
     }
 
     server.sin_family = AF_INET;
@@ -213,7 +304,7 @@ int main (int argc, char *argv[])
     if (connect (sd, (struct sockaddr *) &server,sizeof (struct sockaddr)) == -1)
     {
         perror ("[client]Eroare la connect().\n");
-        return;
+        return -1;
     }
 
     char msg[1024];
@@ -222,7 +313,7 @@ int main (int argc, char *argv[])
     if (read(sd, msg, 1024) < 0)
     {
         perror ("[client]Eroare la read() de la server.\n");
-        return;
+        return 0;
     }
    
     printf("[client]%s\n", msg);
@@ -232,27 +323,34 @@ int main (int argc, char *argv[])
     while(read(0, comanda, 100))
     {
         comanda[strlen(comanda) - 1] = '\0';
-        printf("[client]Ai tastat comanda: %s \n", comanda);
+        //printf("[client]Ai tastat comanda: %s \n", comanda);
         fflush(stdout);
         write(sd, comanda, 100);
+
+        char rasp[100];
+        int connected;   
+        bzero(rasp, 100);
 
         if(strcmp(comanda, "exit") == 0)
         {
             close(sd);
             return 0;
         }
-
-        char rasp[100];
-        int connected;   
-        bzero(rasp, 100);
-    
-        if(strcmp(comanda, "Creare cont") == 0)
+        else if(strcmp(comanda, "Creare cont") == 0)
         {
             creare_cont(sd);
         }
         else if(strcmp(comanda, "Log in") == 0)
         {
-            log_in(sd);
+            if(read(sd, &connected, sizeof(connected)) <= 0)
+            {
+                perror("[client]Eroare citire de la server.\n");
+                exit(1);
+            }
+            if(connected == 0)
+            {
+                log_in(sd);
+            }
         }
         else if(strcmp(comanda, "Trimite mesaj catre") == 0)
         {
@@ -261,7 +359,6 @@ int main (int argc, char *argv[])
                 perror("[client]Eroare citire de la server.\n");
                 exit(1);
             }
-            printf("%d\n", connected);
             if(connected == 1)
             {
                 trimite_mesaj(sd);
@@ -280,12 +377,25 @@ int main (int argc, char *argv[])
         }
         else if(strcmp(comanda, "Log out") == 0)
         {
-            //printf("S-a deconectat %s\n", connected_username);
             strcpy(connected_username, "");
         }
         else if(strcmp(comanda, "Raspunde la mesaj") == 0)
         {
-            
+            if(read(sd, &connected, sizeof(connected)) <= 0)
+            {
+                perror("[client]Eroare citire de la server.\n");
+            }
+            if(connected == 1)
+            {
+                raspunde_mesaj(sd);
+            }
+        }
+        else if(strcmp(comanda, "Refresh mesaje") == 0)
+        {
+            if(read(sd, &connected, sizeof(connected)) <= 0)
+            {
+                perror("[client]Eroare citire de la server.\n");
+            }
         }
         else
         {
@@ -306,7 +416,8 @@ int main (int argc, char *argv[])
 
         bzero(rasp, 100);
         read(sd, rasp, 100);
-        printf("Raspunsul este: %s\n", rasp);
+        if(strcmp(rasp, "")!=0)
+            printf("<>%s\n", rasp);
         fflush(stdout);
 
         int conn;
@@ -315,7 +426,7 @@ int main (int argc, char *argv[])
             perror("[client]Eroare citire de la server.\n");
             exit(1);
         }
-        printf("%d\n", conn);
+        //printf("%d\n", conn);
         if(conn == 1)
         {
             int dimrec;
@@ -331,9 +442,8 @@ int main (int argc, char *argv[])
                 exit(1);
             }
             if(strcmp(recmsg, "Nu aveti mesaje noi!") != 0)
-                printf("Mesaje noi: %s\n", recmsg);
+                printf("<>Mesaje primit online: %s\n", recmsg);
         } 
-
         bzero(comanda, 100);
     }
     close (sd);
